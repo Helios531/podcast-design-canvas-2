@@ -1,11 +1,15 @@
 "use strict";
 
-// Show library dashboard for Podcast Design Canvas (#47).
+// Show library dashboard for Podcast Design Canvas (#47, #121).
 //
 // Manages a collection of named shows, each with a saved template/style identity
 // and a list of episodes. Creators can start a new episode from a show template,
 // review episode status, and keep multiple podcast identities separated.
 // DOM-free so the library screen and tests share one source of truth.
+//
+// deserializeLibrary also restores the internal show/episode id counters past
+// the highest existing id (mirrors show-brand-kit's overlay-counter restore)
+// so a page reload never collides new ids with persisted ones.
 (function (global) {
   const EPISODE_STATUS = {
     DRAFT: "draft",
@@ -210,11 +214,51 @@
     return JSON.stringify(library || createLibrary());
   }
 
+  function extractTrailingIdNumber(id) {
+    if (typeof id !== "string") {
+      return 0;
+    }
+    const match = /-(\d+)$/.exec(id);
+    if (!match) {
+      return 0;
+    }
+    const n = Number(match[1]);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  function syncCountersFromLibrary(library) {
+    const shows = library && Array.isArray(library.shows) ? library.shows : [];
+    let highestShow = 0;
+    let highestEpisode = 0;
+    shows.forEach(function (show) {
+      if (!show) return;
+      const showNum = extractTrailingIdNumber(show.id);
+      if (showNum > highestShow) {
+        highestShow = showNum;
+      }
+      const episodes = Array.isArray(show.episodes) ? show.episodes : [];
+      episodes.forEach(function (episode) {
+        if (!episode) return;
+        const epNum = extractTrailingIdNumber(episode.id);
+        if (epNum > highestEpisode) {
+          highestEpisode = epNum;
+        }
+      });
+    });
+    if (highestShow > showCounter) {
+      showCounter = highestShow;
+    }
+    if (highestEpisode > episodeCounter) {
+      episodeCounter = highestEpisode;
+    }
+  }
+
   function deserializeLibrary(json) {
     if (!json) return createLibrary();
     try {
       const parsed = JSON.parse(json);
       if (!parsed || !Array.isArray(parsed.shows)) return createLibrary();
+      syncCountersFromLibrary(parsed);
       return parsed;
     } catch (err) {
       return createLibrary();
