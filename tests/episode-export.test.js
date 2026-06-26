@@ -10,6 +10,7 @@ const style = require("../app/episode-style.js");
 const audio = require("../app/audio-polish.js");
 const moments = require("../app/visual-moments.js");
 const exportApi = require("../app/episode-export.js");
+const review = require("../app/publish-review.js");
 
 let passed = 0;
 function test(name, fn) {
@@ -37,11 +38,20 @@ function completeContext(episode) {
   const board = moments.createBoard(episode);
   const withMoment = moments.addMoment(board, "caption", { time: "1:00", text: "Welcome back", speakerRole: "Host" });
   const momentsSummary = moments.summarizeBoard(withMoment);
+  const approvedReview = review.approveReview(review.createReview(episode, {
+    audioPolish: polish,
+    appliedStyle: appliedStyle,
+    templateName: "Founders Unfiltered",
+    momentsSummary: momentsSummary,
+    momentsBoard: withMoment,
+    captionCount: review.countVisibleCaptions(withMoment),
+  }));
   return {
     audioPolish: polish,
     appliedStyle,
     templateName: "Founders Unfiltered",
     momentsSummary,
+    publishReview: approvedReview.review,
   };
 }
 

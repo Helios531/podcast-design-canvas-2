@@ -310,6 +310,7 @@
       appliedAudioPolish: appliedAudioPolish,
       contextApproved: contextApproved,
       publishReviewApproved: publishReviewApproved,
+      publishReview: publishReview,
       activeTemplateId: activeTemplateId,
       lastView: lastView,
       setupComplete: ES.validateDraft(state).ok,
@@ -345,10 +346,33 @@
     appliedAudioPolish = data.appliedAudioPolish || null;
     contextApproved = Boolean(data.contextApproved);
     publishReviewApproved = Boolean(data.publishReviewApproved);
+    publishReview = data.publishReview || null;
     activeTemplateId = data.activeTemplateId || null;
     lastView = data.lastView || "setup";
     if (SI && activeShowId && LIB) {
       state = SI.sanitizeSetupDraft(state, LIB.getShow(showLibrary, activeShowId));
+    }
+    // If a persisted approved review exists but the current context no longer
+    // satisfies it (audio/style was removed), drop the approval so the creator
+    // is sent back through the publish review before export (#179).
+    if (publishReviewApproved && publishReview && PR && !PR.validateExportGate(publishReview).ok) {
+      publishReviewApproved = false;
+    }
+    if (publishReviewApproved && !publishReview && PR) {
+      const summary = ES.summarize(state);
+      const restored = PR.createReview(summary, buildReviewContext(summary));
+      if (PR.canApprove(restored)) {
+        const approved = PR.approveReview(restored);
+        if (approved.ok) {
+          publishReview = approved.review;
+          publishReviewApproved = true;
+        } else {
+          publishReviewApproved = false;
+        }
+      } else {
+        publishReviewApproved = false;
+        publishReview = restored;
+      }
     }
   }
 
@@ -2641,6 +2665,10 @@
       return;
     }
     if (target === "export") {
+      if (PR && !PR.validateExportGate(publishReview).ok) {
+        renderPublishReview(summary);
+        return;
+      }
       renderExport(summary);
       return;
     }
@@ -2776,6 +2804,8 @@
       correctionSummary: correctionReview && correctionReview.approved && TC
         ? TC.summarizeCorrection(correctionReview)
         : null,
+      publishReview: publishReview,
+      publishReviewApproved: publishReviewApproved,
     };
   }
 
@@ -3395,10 +3425,10 @@
     }
 
     refreshPublishReview(summary);
-    const reviewGate = PR ? PR.validateExportGate(publishReview) : { ok: true };
     ensurePublishPackage(summary);
     const ctx = buildExportContext(summary);
-    const readiness = EXP.validateReadiness(ctx);
+    const reviewGate = PR ? PR.validateExportGate(publishReview) : { ok: true };
+    const exportGate = EXP.validateExportGate(ctx);
     if (!exportJob) {
       exportJob = EXP.createExport(summary, {
         templateId: activeTemplateId || "",
@@ -3436,13 +3466,13 @@
       return;
     }
 
-    if (!readiness.ok) {
+    if (!exportGate.ok) {
       view.appendChild(
         el(
           "section",
           { class: "card export-blocked" },
           el("h3", {}, "Not ready to export yet"),
-          el("p", { class: "field-error" }, readiness.error),
+          el("p", { class: "field-error" }, exportGate.error),
         ),
       );
       const backBlocked = el("button", { type: "button", class: "ghost" }, "← Back to workspace");
@@ -3572,6 +3602,11 @@
       startButton.addEventListener("click", () => {
         const result = EXP.runExport(exportJob, summary, ctx);
         if (!result.ok) {
+          if (result.needsReview) {
+            renderPublishReview(summary);
+            return;
+          }
+          renderExport(summary);
           return;
         }
         exportJob = result.state;

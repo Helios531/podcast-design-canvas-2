@@ -1,11 +1,27 @@
 "use strict";
 
-// Episode export model for Podcast Design Canvas (#30).
+// Episode export model for Podcast Design Canvas (#30, #179).
 //
 // The final publish step: roll up setup, audio, style, canvas/template, and visual
 // moments into a coherent export job with creator-facing platform, resolution, and
 // caption choices. DOM-free so the export screen and tests share one source of truth.
+//
+// A real publish-review approval gate is enforced here so an unapproved episode
+// cannot start or complete export (#179). The export screen and tests share this
+// gate, and the optional `reviewApi` parameter lets `runExport` block on
+// `validateExportGate` without forcing a hard dependency on publish-review.
 (function (global) {
+  function reviewApi() {
+    if (typeof module !== "undefined" && module.exports && typeof require === "function") {
+      try {
+        return require("./publish-review.js");
+      } catch (err) {
+        return null;
+      }
+    }
+    const g = typeof window !== "undefined" ? window : globalThis;
+    return g.PdcPublishReview || null;
+  }
   const PLATFORMS = [
     { id: "youtube", name: "YouTube", tagline: "Landscape long-form publish" },
     { id: "spotify", name: "Spotify / Apple Podcasts", tagline: "Video podcast feeds" },
@@ -88,6 +104,40 @@
     return { ok: true };
   }
 
+  // Hard publish-review approval gate (#179). The full-episode review must be
+  // explicitly approved before any export step can run. Returns the gate result
+  // for the caller to surface in the UI without leaking implementation details.
+  function validatePublishApproval(context) {
+    const ctx = context || {};
+    const PR = reviewApi();
+    if (!PR || typeof PR.validateExportGate !== "function") {
+      return { ok: true };
+    }
+    if (!ctx.publishReview) {
+      return {
+        ok: false,
+        error: "Complete the publish review before exporting this episode.",
+        needsReview: true,
+      };
+    }
+    const result = PR.validateExportGate(ctx.publishReview);
+    if (!result.ok) {
+      return Object.assign({}, result, { needsReview: true });
+    }
+    return { ok: true };
+  }
+
+  // Combined readiness check used by the UI: returns the first gate that fails
+  // so the screen can send creators to the right place (review vs audio vs style).
+  function validateExportGate(context) {
+    const ctx = context || {};
+    const approval = validatePublishApproval(ctx);
+    if (!approval.ok) {
+      return approval;
+    }
+    return validateReadiness(ctx);
+  }
+
   function updateOption(state, key, value) {
     const next = clone(state || createExport({}));
     if (key === "platform" && getPlatform(value).id === value) {
@@ -161,9 +211,14 @@
   }
 
   function startExport(state, episodeSummary, context) {
-    const check = validateReadiness(context);
-    if (!check.ok) {
-      return { ok: false, error: check.error, state: clone(state || createExport(episodeSummary)) };
+    const gate = validateExportGate(context);
+    if (!gate.ok) {
+      return {
+        ok: false,
+        error: gate.error,
+        state: clone(state || createExport(episodeSummary)),
+        needsReview: Boolean(gate.needsReview),
+      };
     }
     const next = clone(state || createExport(episodeSummary));
     next.status = "rendering";
@@ -171,25 +226,47 @@
     next.startedAt = Date.now();
     next.completedAt = null;
     next.downloadName = "";
-    return { ok: true, state: next };
+    return { ok: true, state: next, needsReview: false };
   }
 
-  function completeExport(state, episodeSummary) {
+  function completeExport(state, episodeSummary, context) {
+    const gate = context ? validateExportGate(context) : { ok: true };
+    if (!gate.ok) {
+      return {
+        ok: false,
+        error: gate.error,
+        state: clone(state || createExport(episodeSummary)),
+        needsReview: Boolean(gate.needsReview),
+      };
+    }
     const next = clone(state || createExport(episodeSummary));
     const episode = episodeSummary || {};
     next.status = "ready";
     next.progress = 100;
     next.completedAt = Date.now();
     next.downloadName = `${safeFileStem(episode.episodeName)}-${next.resolution}.mp4`;
-    return next;
+    return { ok: true, state: next, needsReview: false };
   }
 
   function runExport(state, episodeSummary, context) {
+    const gate = validateExportGate(context);
+    if (!gate.ok) {
+      return {
+        ok: false,
+        error: gate.error,
+        state: clone(state || createExport(episodeSummary)),
+        needsReview: Boolean(gate.needsReview),
+      };
+    }
     const started = startExport(state, episodeSummary, context);
     if (!started.ok) {
       return started;
     }
-    return { ok: true, state: completeExport(started.state, episodeSummary) };
+    const finished = completeExport(started.state, episodeSummary, context);
+    if (!finished.ok) {
+      return finished;
+    }
+    return { ok: true, state: finished.state, needsReview: false };
   }
 
   function summarizeExport(state) {
@@ -219,6 +296,8 @@
     getCaptionMode,
     createExport,
     validateReadiness,
+    validatePublishApproval,
+    validateExportGate,
     updateOption,
     buildFinalSummary,
     startExport,
