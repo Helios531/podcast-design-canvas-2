@@ -3574,6 +3574,13 @@
       const previewCanvas = GAL.applyListingForEpisode(listing, previewSummary, styleFromListing);
       previewBody.appendChild(renderCanvasStage(previewCanvas));
       previewMeta.appendChild(el("h4", { class: "creator-gallery-preview-name" }, listing.name));
+      previewMeta.appendChild(
+        el(
+          "span",
+          { class: `creator-gallery-pricing pricing-${listing.pricing === "paid" ? "paid" : "free"}` },
+          listing.pricing === "paid" ? "Paid" : "Free",
+        ),
+      );
       if (listing.description) {
         previewMeta.appendChild(el("p", { class: "hint" }, listing.description));
       }
@@ -3609,6 +3616,13 @@
           renderGalleryPreviewThumb(listing, previewSummary),
           el("span", { class: "creator-gallery-card-name" }, item.name),
           el("span", { class: "creator-gallery-card-meta" }, galleryListingStatusLine(item)),
+        );
+        card.appendChild(
+          el(
+            "span",
+            { class: `creator-gallery-card-pricing pricing-${item.pricing === "paid" ? "paid" : "free"}` },
+            item.pricing === "paid" ? "Paid" : "Free",
+          ),
         );
         if (item.description) {
           card.appendChild(el("span", { class: "creator-gallery-card-desc" }, item.description));
@@ -3718,6 +3732,14 @@
     });
     formCard.appendChild(field("Style tags", tagsInput, null, "Comma-separated tags for browsing and filtering."));
 
+    const pricingSelect = el(
+      "select",
+      { id: "gallery-listing-pricing", class: "gallery-listing-pricing" },
+      el("option", { value: "free", selected: true }, "Free to apply"),
+      el("option", { value: "paid" }, "Paid"),
+    );
+    formCard.appendChild(field("Pricing", pricingSelect, null, "Show whether other creators can apply this free or it is a paid layout."));
+
     const publishError = el("p", { class: "field-error", role: "alert", hidden: true });
     formCard.appendChild(publishError);
 
@@ -3744,6 +3766,7 @@
         name: nameResult.name,
         description: descriptionInput.value,
         styleTags: tagsInput.value,
+        pricing: pricingSelect.value,
         previewImage: GAL.buildPreviewImage(template.canvas),
         creatorName: previewSummaryShowName(summary),
       });

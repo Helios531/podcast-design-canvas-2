@@ -4054,3 +4054,23 @@ button.ghost:hover,
   }
 }
 
+
+/* #159 — Free/Paid pricing label on creator gallery listings. */
+.creator-gallery-pricing,
+.creator-gallery-card-pricing {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+.pricing-free {
+  background: rgba(34, 160, 96, 0.16);
+  color: #1c8a52;
+}
+.pricing-paid {
+  background: rgba(108, 76, 255, 0.16);
+  color: #5a3ff0;
+}

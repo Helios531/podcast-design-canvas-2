@@ -49,6 +49,12 @@
     return [];
   }
 
+  // A listing is either free to apply or a paid (monetizable) layout. Default
+  // free so unspecified listings stay shareable.
+  function normalizePricing(pricing) {
+    return trim(pricing).toLowerCase() === "paid" ? "paid" : "free";
+  }
+
   function buildPreviewImage(canvas) {
     if (!canvas) {
       return {
@@ -154,6 +160,7 @@
       canvas: cloneCanvas(canvas),
       sourceTemplateId: meta.sourceTemplateId || null,
       creatorName: trim(meta.creatorName) || "Creator",
+      pricing: normalizePricing(meta.pricing),
       publishedAt: Date.now(),
     };
   }
@@ -195,6 +202,7 @@
       publishedAt: listing.publishedAt,
       presetName: listing.previewImage && listing.previewImage.presetName,
       sourceTemplateId: listing.sourceTemplateId,
+      pricing: normalizePricing(listing.pricing),
     }));
   }
 
@@ -253,6 +261,7 @@
     formatStyleTag,
     displayStyleTags,
     validateListingName,
+    normalizePricing,
     createListing,
     saveListing,
     publishListing,
